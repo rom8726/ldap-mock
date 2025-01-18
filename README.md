@@ -91,6 +91,24 @@ users:
 3. Interact with `ldap-mock` as a regular LDAP server (default port: `389`).
 4. Clear mocks via the HTTP API to reuse the setup in subsequent tests.
 
+#### docker-compose.yml example
+You can use this docker-compose.yml example:
+
+```yaml
+version: "3.9"
+services:
+  ldap-mock:
+    image: rom8726/ldap-mock:v0.1.0
+    ports:
+      - "389:389"     # Expose the LDAP server port
+      - "6006:6006"   # Expose the HTTP API port for managing mocks
+    environment:
+      LDAP_USERNAME: admin            # Set the username for LDAP binding
+      LDAP_PASSWORD: admin123         # Set the password for LDAP binding
+      LDAP_PORT: 389                  # Port for the LDAP server (optional, default is 389)
+      MOCK_PORT: 6006                 # Port for the mock HTTP server (optional, default is 6006)
+```
+
 ## License
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
