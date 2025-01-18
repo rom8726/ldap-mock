@@ -31,9 +31,10 @@ Environment variables:
 #### Load Mocks
 To load user mocks, send the following request:
 
-```http request
-POST /mock Content-Type: application/x-yaml
-
+```shell
+curl -X POST http://localhost:6006/mock \
+     -H "Content-Type: application/x-yaml" \
+     -d '
 users:
   - cn: CN=John.Doe,OU=Users,DC=example,DC=com
     attrs:
@@ -47,13 +48,14 @@ users:
       telephoneNumber: +9876543210
       mail: alice.smith@example.com
       department: Human Resources
+'
 ```
 
 #### Clear Mocks
 To clear all currently loaded mocks:
 
-```http request
-POST /clean
+```shell
+curl -X POST http://localhost:6006/clean
 ```
 
 
