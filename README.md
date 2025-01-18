@@ -2,6 +2,7 @@
 
 `ldap-mock` is a testing tool for Go projects that allows you to mock LDAP server interactions (e.g., Active Directory).
 It enables you to create and manage LDAP request mocks efficiently through a simple HTTP API, making development and testing more straightforward.
+Code uses github.com/bradleypeabody/godap.
 
 ## Features
 - Run an LDAP mock server on a specified port (default: `389`).
