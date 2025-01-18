@@ -16,8 +16,7 @@ Code uses [github.com/bradleypeabody/godap](github.com/bradleypeabody/godap).
 You can use Docker to deploy `ldap-mock`:
 
 ```sh
-docker build -t ldap-mock .
-docker run -p 389:389 -p 6006:6006 -e LDAP_USERNAME=admin -e LDAP_PASSWORD=admin123 ldap-mock
+docker run -p 389:389 -p 6006:6006 -e LDAP_USERNAME=admin -e LDAP_PASSWORD=admin123 rom8726/ldap-mock:v0.1.0
 ```
 
 Environment variables:
