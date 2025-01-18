@@ -31,16 +31,34 @@ func run() error {
 
 	ldapSrv := NewLDAPServer(
 		log,
-		os.Getenv("LDAP_PORT"),
+		getLDAPPort(),
 		os.Getenv("LDAP_USERNAME"),
 		os.Getenv("LDAP_PASSWORD"),
 	)
 
-	mockSrv := NewMockServer(log, os.Getenv("MOCK_PORT"), ldapSrv)
+	mockSrv := NewMockServer(log, getMockPort(), ldapSrv)
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error { return ldapSrv.ListenAndServe(groupCtx) })
 	group.Go(func() error { return mockSrv.ListenAndServe(groupCtx) })
 
 	return group.Wait()
+}
+
+func getLDAPPort() string {
+	envPort := os.Getenv("LDAP_PORT")
+	if envPort == "" {
+		return "389"
+	}
+
+	return envPort
+}
+
+func getMockPort() string {
+	envPort := os.Getenv("MOCK_PORT")
+	if envPort == "" {
+		return "6006"
+	}
+
+	return envPort
 }
