@@ -16,4 +16,4 @@ COPY --from=build /go/src/ldap-mock/ldap-mock-server /bin/ldap-mock-server
 EXPOSE 389
 EXPOSE 6006
 
-CMD /bin/ldap-mock-server
+CMD ["/bin/ldap-mock-server"]
