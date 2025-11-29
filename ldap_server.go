@@ -92,23 +92,90 @@ func (s *LDAPServer) initHandlers() {
 	}})
 
 	s.srv.Handlers = append(s.srv.Handlers, &godap.LDAPSimpleSearchFuncHandler{LDAPSimpleSearchFunc: func(req *godap.LDAPSimpleSearchRequest) []*godap.LDAPSimpleSearchResultEntry {
-		s.log.Info("search request")
+		s.log.Info("search request",
+			zap.String("base_dn", req.BaseDN),
+			zap.String("filter_attr", req.FilterAttr),
+			zap.String("filter_value", req.FilterValue),
+			zap.Int64("scope", req.Scope),
+		)
 
 		mock := s.getMock()
-		ret := make([]*godap.LDAPSimpleSearchResultEntry, 0, len(mock.Users))
 
-		for _, user := range mock.Users {
+		users := s.findMatchingUsers(mock, req)
+
+		ret := make([]*godap.LDAPSimpleSearchResultEntry, 0, len(users))
+		for _, user := range users {
 			attrs := make(map[string]any, len(user.Attrs))
 			for k, v := range user.Attrs {
 				attrs[k] = v
 			}
 
 			ret = append(ret, &godap.LDAPSimpleSearchResultEntry{
-				DN:    "cn=" + user.CN + "," + req.BaseDN,
+				DN:    user.CN,
 				Attrs: attrs,
 			})
 		}
 
 		return ret
 	}})
+}
+
+func (s *LDAPServer) findMatchingUsers(mock LDAPMock, req *godap.LDAPSimpleSearchRequest) []User {
+	filter := buildFilter(req.FilterAttr, req.FilterValue)
+	var users []User
+
+	if len(mock.Rules) > 0 {
+		engine := NewRuleEngine(mock.Rules)
+
+		searchReq := SearchRequest{
+			BaseDN: req.BaseDN,
+			Scope:  LDAPScope(req.Scope),
+			Filter: filter,
+		}
+
+		if rule := engine.FindMatchingRule(searchReq); rule != nil {
+			s.log.Info("rule matched", zap.String("rule", rule.Name))
+			users = rule.Response.Users
+		}
+	}
+
+	if users == nil {
+		users = mock.Users
+	}
+
+	return filterUsers(users, filter)
+}
+
+func filterUsers(users []User, filterStr string) []User {
+	if filterStr == "(objectClass=*)" {
+		return users
+	}
+
+	filter, err := ParseFilter(filterStr)
+	if err != nil {
+		return users
+	}
+
+	result := make([]User, 0, len(users))
+	for _, user := range users {
+		attrs := make(map[string]string, len(user.Attrs)+1)
+		attrs["cn"] = user.CN
+		for k, v := range user.Attrs {
+			attrs[k] = v
+		}
+
+		if MatchFilter(filter, attrs) {
+			result = append(result, user)
+		}
+	}
+
+	return result
+}
+
+func buildFilter(attr, value string) string {
+	if attr == "" {
+		return "(objectClass=*)"
+	}
+
+	return "(" + attr + "=" + value + ")"
 }
