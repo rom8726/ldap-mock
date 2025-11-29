@@ -122,7 +122,6 @@ func (s *LDAPServer) initHandlers() {
 
 func (s *LDAPServer) findMatchingUsers(mock LDAPMock, req *godap.LDAPSimpleSearchRequest) []User {
 	filter := buildFilter(req.FilterAttr, req.FilterValue)
-	var users []User
 
 	if len(mock.Rules) > 0 {
 		engine := NewRuleEngine(mock.Rules)
@@ -135,19 +134,15 @@ func (s *LDAPServer) findMatchingUsers(mock LDAPMock, req *godap.LDAPSimpleSearc
 
 		if rule := engine.FindMatchingRule(searchReq); rule != nil {
 			s.log.Info("rule matched", zap.String("rule", rule.Name))
-			users = rule.Response.Users
+			return rule.Response.Users
 		}
 	}
 
-	if users == nil {
-		users = mock.Users
-	}
-
-	return filterUsers(users, filter)
+	return filterUsers(mock.Users, filter)
 }
 
 func filterUsers(users []User, filterStr string) []User {
-	if filterStr == "(objectClass=*)" {
+	if filterStr == "(objectClass=*)" || filterStr == "" {
 		return users
 	}
 
@@ -173,7 +168,7 @@ func filterUsers(users []User, filterStr string) []User {
 }
 
 func buildFilter(attr, value string) string {
-	if attr == "" {
+	if attr == "" || attr == "searchFingerprint" {
 		return "(objectClass=*)"
 	}
 
