@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS build
+FROM golang:1.25-alpine AS build
 
 ENV GOPROXY="https://proxy.golang.org,direct"
 ENV PROJECTDIR=/go/src/ldap-mock

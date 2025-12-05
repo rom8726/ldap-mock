@@ -13,7 +13,7 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, err.Error()+"\n")
+		_, _ = fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(1)
 	}
 }
@@ -29,14 +29,17 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	requestLogger := NewInMemoryRequestLogger(DefaultRequestLogCapacity)
+
 	ldapSrv := NewLDAPServer(
 		log,
 		getLDAPPort(),
 		os.Getenv("LDAP_USERNAME"),
 		os.Getenv("LDAP_PASSWORD"),
+		requestLogger,
 	)
 
-	mockSrv := NewMockServer(log, getMockPort(), ldapSrv)
+	mockSrv := NewMockServer(log, getMockPort(), ldapSrv, requestLogger)
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error { return ldapSrv.ListenAndServe(groupCtx) })
