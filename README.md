@@ -162,6 +162,23 @@ services:
       LDAP_PASSWORD: admin123
 ```
 
+## UI (WireMock-style dashboard)
+
+The dashboard is embedded and served at `http://<MOCK_HOST>:6006/ui`.
+
+- **Requests**: recent LDAP requests, matched rule (if any), response counts; click a row to inspect details (request, rule match, response DNs).
+- **Rules**: loaded rules and the current YAML.
+- **Mock Data**: current users/attributes.
+
+### Quick local run with docker-compose (dev helper)
+
+`dev/docker-compose.yml` includes `ldap-mock` plus a `tester` that loads `dev/mock.yaml` and performs a couple of LDAP searches (including a rule-matching query) so the UI is populated immediately.
+
+```
+make compose-up   # build & start
+make compose-down # stop & remove
+```
+
 ### Example: Different responses for different queries
 
 ```yaml
