@@ -27,4 +27,5 @@ services:
         until nc -z ldap-mock 389; do sleep 1; done
         curl -s -X POST http://ldap-mock:6006/mock -H 'Content-Type: application/x-yaml' --data-binary @/tmp/mock.yaml >/dev/null
         ldapsearch -x -H ldap://ldap-mock:389 -D 'admin' -w 'admin123' -b 'DC=example,DC=com' -s sub '(objectClass=*)' mail title || true
+        ldapsearch -x -H ldap://ldap-mock:389 -D 'admin' -w 'admin123' -b 'DC=example,DC=com' -s sub '(memberOf=CN=Admins,DC=example,DC=com)' mail role || true
         sleep 600
