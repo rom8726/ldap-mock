@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -18,6 +19,7 @@ import (
 
 type MockHolder interface {
 	SetMock(mock LDAPMock)
+	GetMock() LDAPMock
 }
 
 type MockServer struct {
@@ -27,6 +29,8 @@ type MockServer struct {
 	log           *zap.Logger
 	mockHolder    MockHolder
 	requestLogger RequestLogger
+	mockMu        sync.RWMutex
+	lastMockYAML  string
 }
 
 func NewMockServer(log *zap.Logger, port string, mockHolder MockHolder, requestLogger RequestLogger) *MockServer {
@@ -92,6 +96,12 @@ func (s *MockServer) initHandlers() {
 		}
 
 		s.mockHolder.SetMock(mock)
+
+		s.mockMu.Lock()
+		s.lastMockYAML = string(data)
+		s.mockMu.Unlock()
+
+		w.WriteHeader(http.StatusOK)
 	})
 
 	router.POST("/clean", func(http.ResponseWriter, *http.Request, httprouter.Params) {
@@ -129,6 +139,39 @@ func (s *MockServer) initHandlers() {
 		s.log.Info("requests clear")
 		s.requestLogger.Clear()
 		w.WriteHeader(http.StatusOK)
+	})
+
+	router.GET("/mock", func(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+		mock := s.mockHolder.GetMock()
+
+		s.mockMu.RLock()
+		yamlData := s.lastMockYAML
+		s.mockMu.RUnlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		resp := struct {
+			Mock LDAPMock `json:"mock"`
+			YAML string   `json:"yaml"`
+		}{
+			Mock: mock,
+			YAML: yamlData,
+		}
+
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(resp); err != nil {
+			s.log.Warn("encode mock", zap.Error(err))
+		}
+	})
+
+	router.GET("/ui", func(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(uiIndexHTML))
+	})
+
+	router.GET("/ui/*path", func(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(uiIndexHTML))
 	})
 
 	s.srv.Handler = router

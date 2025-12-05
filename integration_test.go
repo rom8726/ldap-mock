@@ -751,3 +751,58 @@ users:
 		}
 	})
 }
+
+func TestIntegration_MockAPIAndUI(t *testing.T) {
+	srv := startTestServer(t, "cn=admin", "secret")
+	defer srv.stop()
+
+	srv.setMock(t, `
+rules:
+  - id: rule-1
+    name: test
+    filter: "(cn=user)"
+    priority: 5
+users:
+  - cn: user
+    attrs:
+      mail: user@example.com
+`)
+
+	resp, err := http.Get(fmt.Sprintf("http://localhost:%s/mock", srv.mockPort))
+	if err != nil {
+		t.Fatalf("get mock: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("mock status = %d, want 200", resp.StatusCode)
+	}
+
+	var data struct {
+		Mock LDAPMock `json:"mock"`
+		YAML string   `json:"yaml"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		t.Fatalf("decode mock: %v", err)
+	}
+
+	if data.YAML == "" {
+		t.Fatalf("expected yaml to be returned")
+	}
+	if len(data.Mock.Rules) != 1 || data.Mock.Rules[0].ID != "rule-1" {
+		t.Fatalf("rules not returned")
+	}
+	if len(data.Mock.Users) != 1 {
+		t.Fatalf("users not returned")
+	}
+
+	uiResp, err := http.Get(fmt.Sprintf("http://localhost:%s/ui", srv.mockPort))
+	if err != nil {
+		t.Fatalf("get ui: %v", err)
+	}
+	defer uiResp.Body.Close()
+
+	if uiResp.StatusCode != http.StatusOK {
+		t.Fatalf("ui status = %d, want 200", uiResp.StatusCode)
+	}
+}

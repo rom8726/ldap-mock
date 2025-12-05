@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LDAP Mock Dashboard</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; background: #0f172a; color: #e2e8f0; }
+    header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #111827; border-bottom: 1px solid #1f2937; position: sticky; top: 0; z-index: 10; }
+    h1 { margin: 0; font-size: 18px; letter-spacing: 0.01em; }
+    nav { display: flex; gap: 8px; }
+    button.tab { background: #1f2937; border: 1px solid #374151; color: #e5e7eb; padding: 8px 12px; border-radius: 6px; cursor: pointer; }
+    button.tab.active { background: #2563eb; border-color: #2563eb; color: white; }
+    main { padding: 16px; }
+    section { display: none; }
+    section.active { display: block; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px; border-bottom: 1px solid #1f2937; text-align: left; font-size: 14px; }
+    th { color: #cbd5e1; }
+    tr:hover { background: #1f2937; cursor: pointer; }
+    .meta { color: #9ca3af; font-size: 13px; }
+    pre { background: #0b1220; border: 1px solid #1f2937; border-radius: 8px; padding: 10px; overflow-x: auto; font-size: 13px; }
+    .grid { display: grid; gap: 12px; }
+    .grid-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .actions { display: flex; gap: 8px; margin-bottom: 8px; }
+    .btn { background: #2563eb; color: white; border: 1px solid #2563eb; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    .btn.secondary { background: #1f2937; border-color: #374151; color: #e5e7eb; }
+    .tag { display: inline-block; background: #1f2937; border: 1px solid #374151; color: #cbd5e1; padding: 2px 8px; border-radius: 999px; font-size: 12px; margin-right: 6px; }
+    .muted { color: #9ca3af; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>LDAP Mock Dashboard</h1>
+    <nav>
+      <button class="tab active" data-tab="requests">Requests</button>
+      <button class="tab" data-tab="rules">Rules</button>
+      <button class="tab" data-tab="mock">Mock Data</button>
+    </nav>
+  </header>
+  <main>
+    <section id="tab-requests" class="active">
+      <div class="actions">
+        <button class="btn" id="btn-refresh-requests">Refresh</button>
+        <button class="btn secondary" id="btn-clear-requests">Clear</button>
+        <span class="muted" id="requests-info"></span>
+      </div>
+      <div class="card">
+        <table id="requests-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Type</th>
+              <th>BaseDN</th>
+              <th>Filter</th>
+              <th>Rule</th>
+              <th>Response</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Details</h3>
+        <div id="request-details" class="muted">Select a request to view details</div>
+      </div>
+    </section>
+
+    <section id="tab-rules">
+      <div class="actions">
+        <button class="btn" id="btn-refresh-rules">Refresh</button>
+        <span class="muted" id="rules-info"></span>
+      </div>
+      <div class="grid grid-2" id="rules-list"></div>
+      <div class="card">
+        <h3>YAML</h3>
+        <pre id="rules-yaml">No YAML loaded</pre>
+      </div>
+    </section>
+
+    <section id="tab-mock">
+      <div class="actions">
+        <button class="btn" id="btn-refresh-mock">Refresh</button>
+        <span class="muted" id="mock-info"></span>
+      </div>
+      <div class="grid grid-2" id="mock-users"></div>
+    </section>
+  </main>
+
+  <script>
+    const tabs = document.querySelectorAll('button.tab');
+    tabs.forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+
+    function switchTab(name) {
+      tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+      document.querySelectorAll('main section').forEach(sec => {
+        sec.classList.toggle('active', sec.id === 'tab-' + name);
+      });
+      if (name === 'requests') loadRequests();
+      if (name === 'rules') loadMock();
+      if (name === 'mock') loadMock();
+    }
+
+    document.getElementById('btn-refresh-requests').onclick = loadRequests;
+    document.getElementById('btn-clear-requests').onclick = clearRequests;
+    document.getElementById('btn-refresh-rules').onclick = loadMock;
+    document.getElementById('btn-refresh-mock').onclick = loadMock;
+
+    let currentRequests = [];
+
+    async function loadRequests() {
+      setInfo('requests', 'Loading...');
+      try {
+        const res = await fetch('/requests?limit=200');
+        if (!res.ok) throw new Error(await res.text());
+        currentRequests = await res.json();
+        renderRequests(currentRequests);
+        setInfo('requests', currentRequests.length + ' items');
+      } catch (e) {
+        setInfo('requests', 'Error: ' + e.message);
+      }
+    }
+
+    function renderRequests(items) {
+      const tbody = document.querySelector('#requests-table tbody');
+      tbody.innerHTML = '';
+      items.forEach((req, idx) => {
+        const tr = document.createElement('tr');
+        const ruleCell = req.matched_rule ? (req.matched_rule.name || req.matched_rule.id || '') : '';
+        const respCount = req.response ? req.response.count : '';
+        tr.innerHTML =
+          '<td>' + formatTime(req.timestamp) + '</td>' +
+          '<td>' + (req.type || '') + '</td>' +
+          '<td>' + (req.base_dn || '') + '</td>' +
+          '<td>' + (req.filter || '') + '</td>' +
+          '<td>' + ruleCell + '</td>' +
+          '<td>' + respCount + '</td>';
+        tr.onclick = () => showRequestDetails(req);
+        tbody.appendChild(tr);
+        if (idx === 0) showRequestDetails(req);
+      });
+      if (items.length === 0) {
+        document.getElementById('request-details').textContent = 'No requests yet';
+      }
+    }
+
+    function showRequestDetails(req) {
+      const el = document.getElementById('request-details');
+      const attrs = req.attributes && req.attributes.length ? req.attributes.join(', ') : '—';
+      const rule = req.matched_rule ? (req.matched_rule.name || req.matched_rule.id || 'matched') : 'no match';
+      const dnList = req.response && req.response.returned_dns ? req.response.returned_dns.join('\n') : '';
+      el.innerHTML =
+        '<div><span class="meta">Time:</span> ' + formatTime(req.timestamp) + '</div>' +
+        '<div><span class="meta">Type:</span> ' + (req.type || '') + '</div>' +
+        '<div><span class="meta">BaseDN:</span> ' + (req.base_dn || '') + '</div>' +
+        '<div><span class="meta">Scope:</span> ' + (req.scope || '') + '</div>' +
+        '<div><span class="meta">Filter:</span> ' + (req.filter || '') + '</div>' +
+        '<div><span class="meta">Attributes:</span> ' + attrs + '</div>' +
+        '<div><span class="meta">Matched rule:</span> ' + rule + '</div>' +
+        '<div><span class="meta">Response count:</span> ' + (req.response ? req.response.count : '') + '</div>' +
+        '<div class="meta">Returned DNs:</div>' +
+        '<pre>' + (dnList || '—') + '</pre>';
+    }
+
+    async function clearRequests() {
+      setInfo('requests', 'Clearing...');
+      try {
+        const res = await fetch('/requests/clear', { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+        await loadRequests();
+      } catch (e) {
+        setInfo('requests', 'Error: ' + e.message);
+      }
+    }
+
+    async function loadMock() {
+      setInfo('rules', 'Loading...');
+      setInfo('mock', 'Loading...');
+      try {
+        const res = await fetch('/mock');
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        renderRules(data.mock?.rules || [], data.yaml);
+        renderMockUsers(data.mock?.users || []);
+        setInfo('rules', (data.mock?.rules || []).length + ' rules');
+        setInfo('mock', (data.mock?.users || []).length + ' users');
+      } catch (e) {
+        setInfo('rules', 'Error: ' + e.message);
+        setInfo('mock', 'Error: ' + e.message);
+      }
+    }
+
+    function renderRules(rules, yaml) {
+      const list = document.getElementById('rules-list');
+      list.innerHTML = '';
+      if (!rules.length) {
+        list.innerHTML = '<div class="muted">No rules loaded</div>';
+      }
+      rules.forEach(rule => {
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.innerHTML =
+          '<div class="tag">ID: ' + (rule.id || '—') + '</div>' +
+          '<div class="tag">Name: ' + (rule.name || '—') + '</div>' +
+          '<div class="meta">Filter: ' + (rule.filter || '') + '</div>' +
+          '<div class="meta">BaseDN: ' + (rule.base_dn || '—') + '</div>' +
+          '<div class="meta">Scope: ' + (rule.scope || '—') + '</div>' +
+          '<div class="meta">Priority: ' + ((rule.priority ?? 0)) + '</div>';
+        list.appendChild(div);
+      });
+      document.getElementById('rules-yaml').textContent = yaml || 'No YAML loaded';
+    }
+
+    function renderMockUsers(users) {
+      const list = document.getElementById('mock-users');
+      list.innerHTML = '';
+      if (!users.length) {
+        list.innerHTML = '<div class="muted">No users loaded</div>';
+      }
+      users.forEach(u => {
+        const div = document.createElement('div');
+        div.className = 'card';
+        const attrs = u.attrs ? Object.entries(u.attrs).map(([k,v]) => '<div><span class="meta">' + k + ':</span> ' + v + '</div>').join('') : '';
+        div.innerHTML =
+          '<div class="tag">CN: ' + u.cn + '</div>' +
+          (attrs || '<div class="muted">No attributes</div>');
+        list.appendChild(div);
+      });
+    }
+
+    function setInfo(scope, text) {
+      const el = document.getElementById(scope + '-info');
+      if (el) el.textContent = text;
+    }
+
+    function formatTime(ts) {
+      if (!ts) return '';
+      const d = new Date(ts);
+      if (Number.isNaN(d.getTime())) return ts;
+      return d.toLocaleString();
+    }
+
+    // initial load
+    loadRequests();
+  </script>
+</body>
+</html>

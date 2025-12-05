@@ -79,7 +79,7 @@ func (s *LDAPServer) SetMock(mock LDAPMock) {
 	s.usersMock = mock
 }
 
-func (s *LDAPServer) getMock() LDAPMock {
+func (s *LDAPServer) GetMock() LDAPMock {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -111,7 +111,7 @@ func (s *LDAPServer) initHandlers() {
 
 		filter := buildFilter(req.FilterAttr, req.FilterValue)
 
-		mock := s.getMock()
+		mock := s.GetMock()
 
 		users, matchedRule := s.findMatchingUsers(mock, req, filter)
 
