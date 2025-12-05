@@ -39,7 +39,7 @@ func run() error {
 		requestLogger,
 	)
 
-	mockSrv := NewMockServer(log, getMockPort(), ldapSrv)
+	mockSrv := NewMockServer(log, getMockPort(), ldapSrv, requestLogger)
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error { return ldapSrv.ListenAndServe(groupCtx) })

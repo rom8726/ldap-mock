@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -33,7 +34,7 @@ func startTestServer(t *testing.T, username, password string) *testServer {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ldapSrv := NewLDAPServer(log, ldapPort, username, password, requestLogger)
-	mockSrv := NewMockServer(log, mockPort, ldapSrv)
+	mockSrv := NewMockServer(log, mockPort, ldapSrv, requestLogger)
 
 	done := make(chan struct{})
 
@@ -670,4 +671,83 @@ rules:
 	if len(result.Entries) != 3 {
 		t.Errorf("entries = %d, want 3", len(result.Entries))
 	}
+}
+
+func TestIntegration_RequestLogAPI(t *testing.T) {
+	srv := startTestServer(t, "cn=admin", "secret")
+	defer srv.stop()
+
+	srv.setMock(t, `
+users:
+  - cn: john.doe
+    attrs:
+      mail: john@example.com
+`)
+
+	conn := srv.ldapDial(t)
+	defer conn.Close()
+
+	if err := conn.Bind("cn=admin", "secret"); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+
+	_, err := conn.Search(&ldap.SearchRequest{
+		BaseDN:     "DC=example,DC=com",
+		Scope:      ldap.ScopeWholeSubtree,
+		Filter:     "(cn=john.doe)",
+		Attributes: []string{"mail"},
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+
+	t.Run("list with limit", func(t *testing.T) {
+		resp, err := http.Get(fmt.Sprintf("http://localhost:%s/requests?limit=1", srv.mockPort))
+		if err != nil {
+			t.Fatalf("get requests: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+
+		var logs []LDAPRequestLog
+		if err := json.NewDecoder(resp.Body).Decode(&logs); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+
+		if len(logs) != 1 {
+			t.Fatalf("logs length = %d, want 1", len(logs))
+		}
+		if logs[0].Filter != "(cn=john.doe)" {
+			t.Fatalf("filter = %q, want (cn=john.doe)", logs[0].Filter)
+		}
+		if logs[0].Response.Count != 1 {
+			t.Fatalf("response count = %d, want 1", logs[0].Response.Count)
+		}
+	})
+
+	t.Run("clear", func(t *testing.T) {
+		resp, err := http.Post(fmt.Sprintf("http://localhost:%s/requests/clear", srv.mockPort), "", nil)
+		if err != nil {
+			t.Fatalf("clear: %v", err)
+		}
+		resp.Body.Close()
+
+		resp, err = http.Get(fmt.Sprintf("http://localhost:%s/requests", srv.mockPort))
+		if err != nil {
+			t.Fatalf("get requests after clear: %v", err)
+		}
+		defer resp.Body.Close()
+
+		var logs []LDAPRequestLog
+		if err := json.NewDecoder(resp.Body).Decode(&logs); err != nil {
+			t.Fatalf("decode after clear: %v", err)
+		}
+
+		if len(logs) != 0 {
+			t.Fatalf("logs length after clear = %d, want 0", len(logs))
+		}
+	})
 }

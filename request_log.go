@@ -10,25 +10,25 @@ const (
 )
 
 type LDAPRequestLog struct {
-	Timestamp   time.Time
-	RequestID   string
-	Type        string
-	BaseDN      string
-	Scope       string
-	Filter      string
-	Attributes  []string
-	MatchedRule *MatchedRuleLog
-	Response    LDAPResponseLog
+	Timestamp   time.Time       `json:"timestamp"`
+	RequestID   string          `json:"request_id"`
+	Type        string          `json:"type"`
+	BaseDN      string          `json:"base_dn"`
+	Scope       string          `json:"scope"`
+	Filter      string          `json:"filter"`
+	Attributes  []string        `json:"attributes,omitempty"`
+	MatchedRule *MatchedRuleLog `json:"matched_rule,omitempty"`
+	Response    LDAPResponseLog `json:"response"`
 }
 
 type MatchedRuleLog struct {
-	RuleID   string
-	RuleName string
+	RuleID   string `json:"id"`
+	RuleName string `json:"name"`
 }
 
 type LDAPResponseLog struct {
-	ReturnedDNs []string
-	Count       int
+	ReturnedDNs []string `json:"returned_dns"`
+	Count       int      `json:"count"`
 }
 
 type RequestLogger interface {

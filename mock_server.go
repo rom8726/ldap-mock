@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -21,16 +23,22 @@ type MockHolder interface {
 type MockServer struct {
 	srv http.Server
 
-	port       string
-	log        *zap.Logger
-	mockHolder MockHolder
+	port          string
+	log           *zap.Logger
+	mockHolder    MockHolder
+	requestLogger RequestLogger
 }
 
-func NewMockServer(log *zap.Logger, port string, mockHolder MockHolder) *MockServer {
+func NewMockServer(log *zap.Logger, port string, mockHolder MockHolder, requestLogger RequestLogger) *MockServer {
+	if requestLogger == nil {
+		requestLogger = NewInMemoryRequestLogger(DefaultRequestLogCapacity)
+	}
+
 	s := &MockServer{
-		port:       port,
-		log:        log.Named("mock_server"),
-		mockHolder: mockHolder,
+		port:          port,
+		log:           log.Named("mock_server"),
+		mockHolder:    mockHolder,
+		requestLogger: requestLogger,
 	}
 
 	s.initHandlers()
@@ -89,6 +97,38 @@ func (s *MockServer) initHandlers() {
 	router.POST("/clean", func(http.ResponseWriter, *http.Request, httprouter.Params) {
 		s.log.Info("clean request")
 		s.mockHolder.SetMock(LDAPMock{})
+	})
+
+	router.GET("/requests", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+		limitParam := r.URL.Query().Get("limit")
+		limit := -1
+		if limitParam != "" {
+			val, err := strconv.Atoi(limitParam)
+			if err != nil || val < 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte("invalid limit"))
+				return
+			}
+			limit = val
+		}
+
+		logs := s.requestLogger.List()
+		if limit >= 0 && len(logs) > limit {
+			logs = logs[:limit]
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(logs); err != nil {
+			s.log.Warn("encode requests", zap.Error(err))
+		}
+	})
+
+	router.POST("/requests/clear", func(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+		s.log.Info("requests clear")
+		s.requestLogger.Clear()
+		w.WriteHeader(http.StatusOK)
 	})
 
 	s.srv.Handler = router
