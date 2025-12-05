@@ -1,0 +1,30 @@
+services:
+  ldap-mock:
+    build:
+      context: ..
+    environment:
+      LDAP_USERNAME: admin
+      LDAP_PASSWORD: admin123
+      LDAP_PORT: "389"
+      MOCK_PORT: "6006"
+    ports:
+      - "389:389"
+      - "6006:6006"
+
+  tester:
+    image: alpine:3
+    depends_on:
+      - ldap-mock
+    volumes:
+      - ./mock.yaml:/tmp/mock.yaml:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        apk add --no-cache curl openldap-clients
+        until nc -z ldap-mock 6006; do sleep 1; done
+        until nc -z ldap-mock 389; do sleep 1; done
+        curl -s -X POST http://ldap-mock:6006/mock -H 'Content-Type: application/x-yaml' --data-binary @/tmp/mock.yaml >/dev/null
+        ldapsearch -x -H ldap://ldap-mock:389 -D 'admin' -w 'admin123' -b 'DC=example,DC=com' -s sub '(objectClass=*)' mail title || true
+        sleep 600

@@ -1,0 +1,20 @@
+users:
+  - cn: CN=John.Doe,OU=Users,DC=example,DC=com
+    attrs:
+      mail: john.doe@example.com
+      title: Software Engineer
+  - cn: CN=Alice.Smith,OU=HR,DC=example,DC=com
+    attrs:
+      mail: alice.smith@example.com
+      department: Human Resources
+rules:
+  - id: rule-admins
+    name: Admin users
+    filter: "(memberOf=CN=Admins,DC=example,DC=com)"
+    priority: 10
+    response:
+      users:
+        - cn: CN=Admin,OU=Users,DC=example,DC=com
+          attrs:
+            mail: admin@example.com
+            role: admin
