@@ -28,10 +28,11 @@ func startTestServer(t *testing.T, username, password string) *testServer {
 	mockPort := getFreePort(t)
 
 	log, _ := zap.NewDevelopment()
+	requestLogger := NewInMemoryRequestLogger(DefaultRequestLogCapacity)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ldapSrv := NewLDAPServer(log, ldapPort, username, password)
+	ldapSrv := NewLDAPServer(log, ldapPort, username, password, requestLogger)
 	mockSrv := NewMockServer(log, mockPort, ldapSrv)
 
 	done := make(chan struct{})

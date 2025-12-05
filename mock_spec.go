@@ -11,6 +11,7 @@ type User struct {
 }
 
 type Rule struct {
+	ID       string   `yaml:"id"`
 	Name     string   `yaml:"name"`
 	Filter   string   `yaml:"filter"`
 	BaseDN   string   `yaml:"base_dn"`

@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	godap "github.com/bradleypeabody/godap"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -20,6 +22,8 @@ type LDAPServer struct {
 
 	usersMock LDAPMock
 	mu        sync.Mutex
+
+	requestLogger RequestLogger
 }
 
 func NewLDAPServer(
@@ -27,12 +31,18 @@ func NewLDAPServer(
 	port string,
 	username string,
 	password string,
+	requestLogger RequestLogger,
 ) *LDAPServer {
+	if requestLogger == nil {
+		requestLogger = NewInMemoryRequestLogger(DefaultRequestLogCapacity)
+	}
+
 	s := &LDAPServer{
-		port:     port,
-		username: username,
-		password: password,
-		log:      log.Named("ldap_server"),
+		port:          port,
+		username:      username,
+		password:      password,
+		log:           log.Named("ldap_server"),
+		requestLogger: requestLogger,
 	}
 
 	s.initHandlers()
@@ -99,16 +109,21 @@ func (s *LDAPServer) initHandlers() {
 			zap.Int64("scope", req.Scope),
 		)
 
+		filter := buildFilter(req.FilterAttr, req.FilterValue)
+
 		mock := s.getMock()
 
-		users := s.findMatchingUsers(mock, req)
+		users, matchedRule := s.findMatchingUsers(mock, req, filter)
 
 		ret := make([]*godap.LDAPSimpleSearchResultEntry, 0, len(users))
+		returnedDNs := make([]string, 0, len(users))
 		for _, user := range users {
 			attrs := make(map[string]any, len(user.Attrs))
 			for k, v := range user.Attrs {
 				attrs[k] = v
 			}
+
+			returnedDNs = append(returnedDNs, user.CN)
 
 			ret = append(ret, &godap.LDAPSimpleSearchResultEntry{
 				DN:    user.CN,
@@ -116,13 +131,34 @@ func (s *LDAPServer) initHandlers() {
 			})
 		}
 
+		requestLog := LDAPRequestLog{
+			Timestamp:  time.Now().UTC(),
+			RequestID:  uuid.NewString(),
+			Type:       "search",
+			BaseDN:     req.BaseDN,
+			Scope:      LDAPScope(req.Scope).String(),
+			Filter:     filter,
+			Attributes: nil,
+			Response: LDAPResponseLog{
+				ReturnedDNs: returnedDNs,
+				Count:       len(returnedDNs),
+			},
+		}
+
+		if matchedRule != nil {
+			requestLog.MatchedRule = &MatchedRuleLog{
+				RuleID:   matchedRule.ID,
+				RuleName: matchedRule.Name,
+			}
+		}
+
+		s.requestLogger.Log(requestLog)
+
 		return ret
 	}})
 }
 
-func (s *LDAPServer) findMatchingUsers(mock LDAPMock, req *godap.LDAPSimpleSearchRequest) []User {
-	filter := buildFilter(req.FilterAttr, req.FilterValue)
-
+func (s *LDAPServer) findMatchingUsers(mock LDAPMock, req *godap.LDAPSimpleSearchRequest, filter string) ([]User, *Rule) {
 	if len(mock.Rules) > 0 {
 		engine := NewRuleEngine(mock.Rules)
 
@@ -134,11 +170,15 @@ func (s *LDAPServer) findMatchingUsers(mock LDAPMock, req *godap.LDAPSimpleSearc
 
 		if rule := engine.FindMatchingRule(searchReq); rule != nil {
 			s.log.Info("rule matched", zap.String("rule", rule.Name))
-			return rule.Response.Users
+			return rule.Response.Users, rule
 		}
 	}
 
-	return filterUsers(mock.Users, filter)
+	return filterUsers(mock.Users, filter), nil
+}
+
+func (s *LDAPServer) RequestLogger() RequestLogger {
+	return s.requestLogger
 }
 
 func filterUsers(users []User, filterStr string) []User {

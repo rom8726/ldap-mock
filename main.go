@@ -29,11 +29,14 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	requestLogger := NewInMemoryRequestLogger(DefaultRequestLogCapacity)
+
 	ldapSrv := NewLDAPServer(
 		log,
 		getLDAPPort(),
 		os.Getenv("LDAP_USERNAME"),
 		os.Getenv("LDAP_PASSWORD"),
+		requestLogger,
 	)
 
 	mockSrv := NewMockServer(log, getMockPort(), ldapSrv)
