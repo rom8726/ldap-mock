@@ -10,6 +10,7 @@ Code uses [github.com/bradleypeabody/godap](github.com/bradleypeabody/godap).
 - Supports YAML format for loading mocks.
 - **Rule-based matching** — define rules to return different responses based on LDAP filter, BaseDN, and scope.
 - **Priority-based rule evaluation** — rules with higher priority are evaluated first.
+- **Mock LDAP groups** — return groups with members in rule responses.
 - Easily integratable into your tests.
 
 ## Getting Started
@@ -119,6 +120,33 @@ rules:
 | `priority` | No | Higher priority rules are evaluated first (default: 0) |
 | `response` | Yes | Response to return when rule matches |
 
+### Response Format
+
+A response can contain users, groups, or both:
+
+```yaml
+response:
+  users:
+    - cn: CN=User1,OU=Users,DC=example,DC=com
+      attrs:
+        mail: user1@example.com
+  groups:
+    - cn: CN=Developers,OU=Groups,DC=example,DC=com
+      members:
+        - CN=User1,OU=Users,DC=example,DC=com
+        - CN=User2,OU=Users,DC=example,DC=com
+      attrs:
+        description: Development team
+```
+
+### Group Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `cn` | Yes | Distinguished Name of the group |
+| `members` | No | List of member DNs (returned as `member` attribute) |
+| `attrs` | No | Additional attributes (description, mail, etc.) |
+
 ### How Matching Works
 
 1. When an LDAP search request arrives, rules are evaluated in **priority order** (highest first).
@@ -204,6 +232,57 @@ rules:
         - cn: CN=User2,OU=Users,DC=example,DC=com
           attrs:
             mail: user2@example.com
+```
+
+### Example: Returning groups
+
+```yaml
+rules:
+  - name: Developers group
+    filter: "(cn=Developers)"
+    response:
+      groups:
+        - cn: CN=Developers,OU=Groups,DC=example,DC=com
+          members:
+            - CN=Dev1,OU=Users,DC=example,DC=com
+            - CN=Dev2,OU=Users,DC=example,DC=com
+          attrs:
+            description: Development team
+
+  - name: All groups
+    filter: "(objectClass=group)"
+    response:
+      groups:
+        - cn: CN=Developers,OU=Groups,DC=example,DC=com
+          members:
+            - CN=Dev1,OU=Users,DC=example,DC=com
+          attrs:
+            description: Development team
+        - cn: CN=Admins,OU=Groups,DC=example,DC=com
+          members:
+            - CN=Admin,OU=Users,DC=example,DC=com
+          attrs:
+            description: Administrators
+```
+
+### Example: Mixed response (users and groups)
+
+```yaml
+rules:
+  - name: Engineering department
+    filter: "(department=engineering)"
+    response:
+      users:
+        - cn: CN=Dev1,OU=Users,DC=example,DC=com
+          attrs:
+            mail: dev1@example.com
+            department: engineering
+      groups:
+        - cn: CN=Engineering,OU=Groups,DC=example,DC=com
+          members:
+            - CN=Dev1,OU=Users,DC=example,DC=com
+          attrs:
+            description: Engineering department group
 ```
 
 ## License

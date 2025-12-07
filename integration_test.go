@@ -806,3 +806,171 @@ users:
 		t.Fatalf("ui status = %d, want 200", uiResp.StatusCode)
 	}
 }
+
+func TestIntegration_RulesWithGroups(t *testing.T) {
+	srv := startTestServer(t, "cn=admin", "secret")
+	defer srv.stop()
+
+	srv.setMock(t, `
+rules:
+  - name: dev-group
+    filter: "(cn=Developers)"
+    response:
+      groups:
+        - cn: CN=Developers,OU=Groups,DC=example,DC=com
+          members:
+            - CN=John.Doe,OU=Users,DC=example,DC=com
+            - CN=Alice.Smith,OU=Users,DC=example,DC=com
+          attrs:
+            description: Development team
+`)
+
+	conn := srv.ldapDial(t)
+	defer conn.Close()
+
+	err := conn.Bind("cn=admin", "secret")
+	if err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+
+	result, err := conn.Search(&ldap.SearchRequest{
+		BaseDN:     "DC=example,DC=com",
+		Scope:      ldap.ScopeWholeSubtree,
+		Filter:     "(cn=Developers)",
+		Attributes: []string{"member", "description"},
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+
+	if len(result.Entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(result.Entries))
+	}
+
+	entry := result.Entries[0]
+	if entry.DN != "CN=Developers,OU=Groups,DC=example,DC=com" {
+		t.Errorf("DN = %q, want CN=Developers,OU=Groups,DC=example,DC=com", entry.DN)
+	}
+
+	members := entry.GetAttributeValues("member")
+	if len(members) != 2 {
+		t.Errorf("members count = %d, want 2", len(members))
+	}
+
+	description := entry.GetAttributeValue("description")
+	if description != "Development team" {
+		t.Errorf("description = %q, want 'Development team'", description)
+	}
+}
+
+func TestIntegration_RulesMixedResponse(t *testing.T) {
+	srv := startTestServer(t, "cn=admin", "secret")
+	defer srv.stop()
+
+	srv.setMock(t, `
+rules:
+  - name: engineering
+    filter: "(department=engineering)"
+    response:
+      users:
+        - cn: CN=Dev1,OU=Users,DC=example,DC=com
+          attrs:
+            mail: dev1@example.com
+            department: engineering
+        - cn: CN=Dev2,OU=Users,DC=example,DC=com
+          attrs:
+            mail: dev2@example.com
+            department: engineering
+      groups:
+        - cn: CN=Engineering,OU=Groups,DC=example,DC=com
+          members:
+            - CN=Dev1,OU=Users,DC=example,DC=com
+            - CN=Dev2,OU=Users,DC=example,DC=com
+          attrs:
+            description: Engineering department
+`)
+
+	conn := srv.ldapDial(t)
+	defer conn.Close()
+
+	err := conn.Bind("cn=admin", "secret")
+	if err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+
+	result, err := conn.Search(&ldap.SearchRequest{
+		BaseDN:     "DC=example,DC=com",
+		Scope:      ldap.ScopeWholeSubtree,
+		Filter:     "(department=engineering)",
+		Attributes: []string{"mail", "member", "description"},
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+
+	if len(result.Entries) != 3 {
+		t.Fatalf("entries = %d, want 3 (2 users + 1 group)", len(result.Entries))
+	}
+
+	var userCount, groupCount int
+	for _, entry := range result.Entries {
+		if entry.GetAttributeValue("mail") != "" {
+			userCount++
+		}
+		if len(entry.GetAttributeValues("member")) > 0 {
+			groupCount++
+		}
+	}
+
+	if userCount != 2 {
+		t.Errorf("user count = %d, want 2", userCount)
+	}
+	if groupCount != 1 {
+		t.Errorf("group count = %d, want 1", groupCount)
+	}
+}
+
+func TestIntegration_MultipleGroups(t *testing.T) {
+	srv := startTestServer(t, "cn=admin", "secret")
+	defer srv.stop()
+
+	srv.setMock(t, `
+rules:
+  - name: user-groups
+    filter: "(objectClass=group)"
+    response:
+      groups:
+        - cn: CN=Developers,OU=Groups,DC=example,DC=com
+          members:
+            - CN=John.Doe,OU=Users,DC=example,DC=com
+          attrs:
+            description: Dev team
+        - cn: CN=Admins,OU=Groups,DC=example,DC=com
+          members:
+            - CN=Admin,OU=Users,DC=example,DC=com
+          attrs:
+            description: Admin team
+`)
+
+	conn := srv.ldapDial(t)
+	defer conn.Close()
+
+	err := conn.Bind("cn=admin", "secret")
+	if err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+
+	result, err := conn.Search(&ldap.SearchRequest{
+		BaseDN:     "DC=example,DC=com",
+		Scope:      ldap.ScopeWholeSubtree,
+		Filter:     "(objectClass=group)",
+		Attributes: []string{"member", "description"},
+	})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+
+	if len(result.Entries) != 2 {
+		t.Fatalf("entries = %d, want 2", len(result.Entries))
+	}
+}

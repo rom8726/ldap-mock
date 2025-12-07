@@ -113,10 +113,11 @@ func (s *LDAPServer) initHandlers() {
 
 		mock := s.GetMock()
 
-		users, matchedRule := s.findMatchingUsers(mock, req, filter)
+		users, groups, matchedRule := s.findMatchingEntries(mock, req, filter)
 
-		ret := make([]*godap.LDAPSimpleSearchResultEntry, 0, len(users))
-		returnedDNs := make([]string, 0, len(users))
+		ret := make([]*godap.LDAPSimpleSearchResultEntry, 0, len(users)+len(groups))
+		returnedDNs := make([]string, 0, len(users)+len(groups))
+
 		for _, user := range users {
 			attrs := make(map[string]any, len(user.Attrs))
 			for k, v := range user.Attrs {
@@ -127,6 +128,23 @@ func (s *LDAPServer) initHandlers() {
 
 			ret = append(ret, &godap.LDAPSimpleSearchResultEntry{
 				DN:    user.CN,
+				Attrs: attrs,
+			})
+		}
+
+		for _, group := range groups {
+			attrs := make(map[string]any, len(group.Attrs)+1)
+			for k, v := range group.Attrs {
+				attrs[k] = v
+			}
+			if len(group.Members) > 0 {
+				attrs["member"] = group.Members
+			}
+
+			returnedDNs = append(returnedDNs, group.CN)
+
+			ret = append(ret, &godap.LDAPSimpleSearchResultEntry{
+				DN:    group.CN,
 				Attrs: attrs,
 			})
 		}
@@ -158,7 +176,7 @@ func (s *LDAPServer) initHandlers() {
 	}})
 }
 
-func (s *LDAPServer) findMatchingUsers(mock LDAPMock, req *godap.LDAPSimpleSearchRequest, filter string) ([]User, *Rule) {
+func (s *LDAPServer) findMatchingEntries(mock LDAPMock, req *godap.LDAPSimpleSearchRequest, filter string) ([]User, []Group, *Rule) {
 	if len(mock.Rules) > 0 {
 		engine := NewRuleEngine(mock.Rules)
 
@@ -170,11 +188,11 @@ func (s *LDAPServer) findMatchingUsers(mock LDAPMock, req *godap.LDAPSimpleSearc
 
 		if rule := engine.FindMatchingRule(searchReq); rule != nil {
 			s.log.Info("rule matched", zap.String("rule", rule.Name))
-			return rule.Response.Users, rule
+			return rule.Response.Users, rule.Response.Groups, rule
 		}
 	}
 
-	return filterUsers(mock.Users, filter), nil
+	return filterUsers(mock.Users, filter), nil, nil
 }
 
 func (s *LDAPServer) RequestLogger() RequestLogger {

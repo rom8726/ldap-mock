@@ -18,3 +18,32 @@ rules:
           attrs:
             mail: admin@example.com
             role: admin
+  - id: rule-dev-group
+    name: Developers group
+    filter: "(cn=Developers)"
+    priority: 5
+    response:
+      groups:
+        - cn: CN=Developers,OU=Groups,DC=example,DC=com
+          members:
+            - CN=John.Doe,OU=Users,DC=example,DC=com
+            - CN=Alice.Smith,OU=Users,DC=example,DC=com
+          attrs:
+            description: Development team
+  - id: rule-all-groups
+    name: All groups
+    filter: "(objectClass=group)"
+    priority: 1
+    response:
+      groups:
+        - cn: CN=Developers,OU=Groups,DC=example,DC=com
+          members:
+            - CN=John.Doe,OU=Users,DC=example,DC=com
+            - CN=Alice.Smith,OU=Users,DC=example,DC=com
+          attrs:
+            description: Development team
+        - cn: CN=Admins,OU=Groups,DC=example,DC=com
+          members:
+            - CN=Admin,OU=Users,DC=example,DC=com
+          attrs:
+            description: Administrators

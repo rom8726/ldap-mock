@@ -85,6 +85,7 @@
         <button class="btn" id="btn-refresh-mock">Refresh</button>
         <span class="muted" id="mock-info"></span>
       </div>
+      <h3>Fallback Users</h3>
       <div class="grid grid-2" id="mock-users"></div>
     </section>
   </main>
@@ -201,13 +202,17 @@
       rules.forEach(rule => {
         const div = document.createElement('div');
         div.className = 'card';
+        const usersCount = rule.response?.users?.length || 0;
+        const groupsCount = rule.response?.groups?.length || 0;
+        const responseInfo = usersCount + ' users, ' + groupsCount + ' groups';
         div.innerHTML =
           '<div class="tag">ID: ' + (rule.id || '—') + '</div>' +
           '<div class="tag">Name: ' + (rule.name || '—') + '</div>' +
           '<div class="meta">Filter: ' + (rule.filter || '') + '</div>' +
           '<div class="meta">BaseDN: ' + (rule.base_dn || '—') + '</div>' +
           '<div class="meta">Scope: ' + (rule.scope || '—') + '</div>' +
-          '<div class="meta">Priority: ' + ((rule.priority ?? 0)) + '</div>';
+          '<div class="meta">Priority: ' + ((rule.priority ?? 0)) + '</div>' +
+          '<div class="meta">Response: ' + responseInfo + '</div>';
         list.appendChild(div);
       });
       document.getElementById('rules-yaml').textContent = yaml || 'No YAML loaded';

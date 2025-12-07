@@ -10,6 +10,12 @@ type User struct {
 	Attrs map[string]string `yaml:"attrs"`
 }
 
+type Group struct {
+	CN      string            `yaml:"cn"`
+	Members []string          `yaml:"members"`
+	Attrs   map[string]string `yaml:"attrs"`
+}
+
 type Rule struct {
 	ID       string   `yaml:"id"`
 	Name     string   `yaml:"name"`
@@ -21,5 +27,6 @@ type Rule struct {
 }
 
 type Response struct {
-	Users []User `yaml:"users"`
+	Users  []User  `yaml:"users"`
+	Groups []Group `yaml:"groups"`
 }
